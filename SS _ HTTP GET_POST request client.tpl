@@ -237,6 +237,9 @@ const getRequestQueryParameters = require('getRequestQueryParameters');
 const BigQuery = require('BigQuery');
 const getTimestampMillis = require('getTimestampMillis');
 const getType = require('getType');
+const parseUrl = require('parseUrl');
+const getAllEventData = require('getAllEventData');
+const Promise = require('Promise');
 
 
 const endpoint = data.custom_endpoint;
@@ -253,6 +256,7 @@ const project = {
 
 
 // Claim the request
+// if(getRequestPath() === '/'){ // For testing only
 if(getRequestPath() === '/' + endpoint){
   const allow_request_from = data.accept_requests_from;
   const origin = getRequestHeader('Origin');
@@ -267,28 +271,34 @@ if(getRequestPath() === '/' + endpoint){
       if(data.enable_logs){log('REQUEST DATA');}
       if(data.enable_logs){log('👍 POST request');}
       
-      // Any domains
-      if (allow_request_from === 'any') {
-        if(data.enable_logs){log('👍 Request origin:', origin);}
-        if(data.enable_logs){log('👍 Request origin allowed');}
-        const event_data = JSON.parse(getRequestBody());
-        if(data.enable_logs){log('👍 Event data: ', event_data);}
-        claim_request(event_data, origin); 
-        
-      // Some domains
-      } else {
-        const allowed_domains_list = data.allowed_domains_list;
-
-        for (var i=0; i < allowed_domains_list.length; i++){ 
-          if (allowed_domains_list[i].allowed_domain === origin) {
-            if(data.enable_logs){log('👉 Request origin:', origin);}
-            if(data.enable_logs){log('👍 Request origin allowed');}
-            const event_data = JSON.parse(getRequestBody());
-            if(data.enable_logs){log('👍 Event data: ', event_data);}
-            claim_request(event_data, origin);
+      const event_data = JSON.parse(getRequestBody());
+      
+      if(event_data && Object.keys(event_data).length > 0){
+        // Any domains
+        if (allow_request_from === 'any') {
+          if(data.enable_logs){log('👍 Request origin:', origin);}
+          if(data.enable_logs){log('👍 Request origin allowed');}
+          if(data.enable_logs){log('👍 Event data: ', event_data);}
+          claim_request(event_data, origin); 
+          
+        // Some domains
+        } else {
+          const allowed_domains_list = data.allowed_domains_list;
+  
+          for (var i=0; i < allowed_domains_list.length; i++){ 
+            if (allowed_domains_list[i].allowed_domain === origin) {
+              if(data.enable_logs){log('👉 Request origin:', origin);}
+              if(data.enable_logs){log('👍 Request origin allowed');}
+              if(data.enable_logs){log('👍 Event data: ', event_data);}
+              claim_request(event_data, origin);
+            }
           }
         }
-      }   
+      } else {
+        if(data.enable_logs){log('🟠 204 Empty request. This has no payload.');}
+        setResponseStatus(204);
+        returnResponse();
+      }
       
     // GET requests       
     } else if (request_method === 'GET') {
@@ -299,51 +309,92 @@ if(getRequestPath() === '/' + endpoint){
       if(data.enable_logs){log('REQUEST DATA');}
       if(data.enable_logs){log('👍 GET request');}
       
-      // Any domains
-      if (allow_request_from === 'any') {
-        if(data.enable_logs){log('👉 Request origin:', origin);}
-        if(data.enable_logs){log('👍 Request origin allowed');}   
-        const event_data = getRequestQueryParameters();
-                 
-        Object.keys(event_data).forEach(function(key) {
-          // const type = getType(event_data[key]);
-          // log(event_data[key]);
-          // log(type);
-          // if (type === 'object'){
-          //   event_data[key] = JSON.parse(event_data[key]);
-          // }
+      const event_data = getRequestQueryParameters(); 
+      // const event_data = {
+      //   event: 'dl_send_post_request', 
+      //   user_id: 'abcd',
+      //   session_id: 'abcd_1234',
+      //   client_id: "1234",
+      //   ip: '0.0.0.0',
+      //   consent: 100,
+      //   eec: JSON.stringify({
+      //     transaction_id: "T12345",
+      //     affiliation: "Online Store",
+      //     value: 59.89,
+      //     tax: 4.90,
+      //     shipping: 5.99,
+      //     currency: "EUR",
+      //     coupon: "SUMMER_SALE",
+      //     items: [{
+      //       item_name: "Triblend Android T-Shirt",
+      //       item_id: "12345",
+      //       price: "15.25",
+      //       item_brand: "Google",
+      //       item_category: "Apparel",
+      //       item_variant: "Gray",
+      //       quantity: 1
+      //     }, {
+      //       item_name: "Donut Friday Scented T-Shirt",
+      //       item_id: "67890",
+      //       price: 33.75,
+      //       item_brand: "Google",
+      //       item_category: "Apparel",
+      //       item_variant: "Black",
+      //       quantity: 1
+      //     }]
+      //   })
+      // };
+      
+      if(event_data && Object.keys(event_data).length > 0){
+        Object.keys(event_data).forEach((key) => {
+          log("👉🏻 Original type of: " + typeof(event_data[key]) + "👉🏻 Value: ", event_data[key]);
+            if (JSON.parse(event_data[key]) != undefined){
+            event_data[key] = JSON.parse(event_data[key]);
+          } else {
+            event_data[key] = event_data[key];
+          }          
+          
+          // JSON.parse(event_data[key], (key, value) => typeof value === 'object' ? event_data[key] = JSON.parse(event_data[key]) : event_data[key] = event_data[key]);  
+          
+          // Promise.all([event_data[key]])
+          //   .then(() => {
+          //   log('Data to parse: ', typeof(event_data[key]), " => ",  event_data[key]);
+          //   }).then(() => {
+          //     event_data[key] = JSON.parse(event_data[key]);
+          //     log('Parsed: ', typeof(event_data[key]), " => ", event_data[key]);
+          //   }).catch((e) => {
+          //     log('Not parsed: ', typeof(event_data[key]), " => ", event_data[key]);
+          // });
         });
         
-        if(data.enable_logs){log('👍 Event data: ', event_data);}
-        claim_request(event_data, origin); 
-        
-      // Some domains
-      } else {
-        const allowed_domains_list = data.allowed_domains_list;
-
-        for (let i=0; i < allowed_domains_list.length; i++){ 
-          if (allowed_domains_list[i].allowed_domain === origin) {
-            if(data.enable_logs){log('👉 Request origin:', origin);}
-            if(data.enable_logs){log('👍 Request origin allowed');}
-            const event_data = getRequestQueryParameters();
-            
-            Object.keys(event_data).forEach(function(key) {
-              // const type = getType(event_data[key]);
-              // log(event_data[key]);
-              // log(type);
-              // if (type === 'object'){
-              //   event_data[key] = JSON.parse(event_data[key]);
-              // }
-            });
-            
-            if(data.enable_logs){log('👍 Event data: ', event_data);}
-            claim_request(event_data, origin); 
+        // Any domains
+        if (allow_request_from === 'any') {
+          if(data.enable_logs){log('👉 Request origin:', origin);}
+          if(data.enable_logs){log('👍 Request origin allowed');} 
+          if(data.enable_logs){log('👍 Event data: ', event_data);}
+          claim_request(event_data, origin); 
+          
+        // Some domains
+        } else {
+          const allowed_domains_list = data.allowed_domains_list;
+          
+          for (let i=0; i < allowed_domains_list.length; i++){ 
+            if (allowed_domains_list[i].allowed_domain === origin) {
+              if(data.enable_logs){log('👉 Request origin:', origin);}
+              if(data.enable_logs){log('👍 Request origin allowed');}
+              if(data.enable_logs){log('👍 Event data: ', event_data);}
+              claim_request(event_data, origin); 
+            }
           }
         }
+      } else {
+        if(data.enable_logs){log('🟠 204 Empty request. This has no payload.');}
+        setResponseStatus(204);
+        returnResponse();
       }
     }
   } else {
-    if(data.enable_logs){log('🔴 401 Unauthorized request. This is not a POST or a GET request 🖕');}
+    if(data.enable_logs){log('🔴 401 Unauthorized request. 🖕');}
     setResponseStatus(401);
     returnResponse();
   }
@@ -574,6 +625,27 @@ ___SERVER_PERMISSIONS___
       "isEditedByUser": true
     },
     "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "read_event_data",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "eventDataAccess",
+          "value": {
+            "type": 1,
+            "string": "any"
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
   }
 ]
 
@@ -586,6 +658,6 @@ setup: ''
 
 ___NOTES___
 
-Created on 25/3/2022, 20:50:55
+Created on 15/4/2022, 18:07:59
 
 
